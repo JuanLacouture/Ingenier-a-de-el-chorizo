@@ -1,0 +1,4 @@
+.footer { background:#3C2E26; color:#EDE1B7; padding:20px; }
+.footerContent { display:flex; justify-content:space-between; gap:24px; max-width:960px; margin:0 auto; }
+.footerLeft, .footerRight { display:flex; align-items:center; gap:16px; }
+.footerAddress p { margin:4px 0; }

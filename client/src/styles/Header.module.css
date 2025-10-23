@@ -1,0 +1,5 @@
+.header { background: rgba(15,14,13,.85); border-bottom: 1px solid #e2c68b; }
+.dropdown { position: relative; display: inline-block; }
+.dropbtn { background: none; border: none; cursor: pointer; }
+.dropdownContent { display: none; position: absolute; background: #3C2E26; border-radius: 6px; }
+.dropdown:hover .dropdownContent { display: block; }
