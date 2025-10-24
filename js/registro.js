@@ -24,16 +24,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // ===============================
   // 👁️ Mostrar / ocultar contraseñas
   // ===============================
-  togglePassword.addEventListener("click", () => {
-    const type = password.type === "password" ? "text" : "password";
-    password.type = type;
-    togglePassword.textContent = type === "password" ? "👁️" : "🙈";
-  });
-
-  toggleConfirm.addEventListener("click", () => {
-    const type = confirmPassword.type === "password" ? "text" : "password";
-    confirmPassword.type = type;
-    toggleConfirm.textContent = type === "password" ? "👁️" : "🙈";
+  [togglePassword, toggleConfirm].forEach((btn) => {
+    btn?.addEventListener("click", () => {
+      const input = btn === togglePassword ? password : confirmPassword;
+      const type = input.type === "password" ? "text" : "password";
+      input.type = type;
+      btn.textContent = type === "password" ? "👁️" : "🙈";
+    });
   });
 
   // ===============================
@@ -65,8 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // ===============================
   const validations = {
     nombre: {
-      check: (val) => val.length >= 4 && val.length <= 15,
-      msg: "Debe tener entre 4 y 15 caracteres.",
+      check: (val) => val.length >= 4 && val.length <= 20,
+      msg: "Debe tener entre 4 y 20 caracteres.",
     },
     correo: {
       check: (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val),
@@ -100,23 +97,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ===============================
-  // ⌨️ Validación en tiempo real
-  // ===============================
-  [nombre, correo, password, confirmPassword].forEach((input) => {
-    input.addEventListener("input", () => {
-      const val = input.value.trim();
-      const rule = validations[input.id];
-
-      if (rule && !rule.check(val)) showError(input, rule.msg);
-      else if (input.id === "confirmPassword") {
-        if (confirmPassword.value !== password.value)
-          showError(confirmPassword, "Las contraseñas no coinciden.");
-        else clearError(confirmPassword);
-      } else clearError(input);
-    });
-  });
-
-  // ===============================
   // ✅ Enviar formulario a Supabase
   // ===============================
   form.addEventListener("submit", async (e) => {
@@ -148,41 +128,73 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      // Registrar usuario
+      console.log("🚀 Registrando usuario en Supabase Auth...");
+
+      // 1️⃣ Crear usuario en Auth
       const { data, error } = await supabase.auth.signUp({
         email: correo.value.trim(),
         password: password.value.trim(),
         options: {
           data: {
             nombre: nombre.value.trim(),
+            rol: "cliente",
           },
         },
       });
 
-      if (error) throw error;
-
-      // Subir imagen al bucket "perfil-usuarios"
+      if (error) throw new Error(error.message);
       const user = data.user;
-      if (foto.files.length && user) {
-        const file = foto.files[0];
-        const fileName = `${user.id}-${file.name}`;
+      if (!user) throw new Error("No se obtuvo el usuario tras el registro.");
 
-        const { error: uploadError } = await supabase.storage
-          .from("perfil-usuarios")
-          .upload(fileName, file, {
-            cacheControl: "3600",
-            upsert: true,
-            contentType: file.type,
-          });
+      console.log("✅ Usuario Auth creado:", user.id);
 
-        if (uploadError) throw uploadError;
+      // 2️⃣ Subir foto (solo si hay sesión activa)
+      const file = foto.files[0];
+      const fileName = `${user.id}-${file.name}`;
+
+      const session = (await supabase.auth.getSession()).data.session;
+
+      if (!session) {
+        console.warn(
+          "⚠️ No hay sesión activa, se omitirá la subida de foto por RLS."
+        );
+        alert(
+          "📩 Registro exitoso. Revisa tu correo para confirmar tu cuenta antes de subir la foto."
+        );
+        return;
       }
 
-      alert("✅ Registro exitoso. Revisa tu correo para confirmar tu cuenta.");
+      const { error: uploadError } = await supabase.storage
+        .from("fotos-usuarios")
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: file.type,
+        });
+
+      if (uploadError) {
+        console.error("❌ Storage error:", uploadError);
+        throw new Error("Error al subir la foto: " + uploadError.message);
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("fotos-usuarios")
+        .getPublicUrl(fileName);
+
+      const fotoUrl = publicUrlData.publicUrl;
+
+      // 3️⃣ Actualizar metadata con URL
+      await supabase.auth.updateUser({
+        data: { foto_url: fotoUrl },
+      });
+
+      alert(
+        "✅ Registro y carga de foto exitosos. Revisa tu correo para confirmar tu cuenta."
+      );
       form.reset();
       imgPreview.style.display = "none";
     } catch (err) {
-      console.error(err);
+      console.error("⛔ Error completo:", err);
       alert("❌ Error al registrar usuario: " + err.message);
     }
   });
